@@ -2,6 +2,13 @@
 .env
 .env.local
 
+# google service-account / credential keys (never commit secrets)
+*service-account*.json
+gen-lang-client-*.json
+*-credentials.json
+client_secret*.json
+**/google-*.json
+
 # python
 __pycache__/
 *.pyc
