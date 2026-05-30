@@ -1,0 +1,49 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f2f4f6;
+  --foreground: #191f28;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  max-width: 100vw;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Subtle, modern scrollbars */
+.scroll-clean {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d6db transparent;
+}
+.scroll-clean::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-clean::-webkit-scrollbar-thumb {
+  background: #d1d6db;
+  border-radius: 9999px;
+}
+.scroll-clean::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

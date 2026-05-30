@@ -1,0 +1,21 @@
+# env
+.env
+.env.local
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+# local crm store
+data/consultations.local.jsonl
+
+# langgraph conversation checkpoints (persistent memory)
+data/checkpoints.sqlite
+data/checkpoints.sqlite-*
+
+# next.js
+node_modules/
+.next/
+out/
+next-env.d.ts
