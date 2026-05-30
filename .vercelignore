@@ -1,0 +1,13 @@
+# The Python agent service is deployed separately (not on Vercel).
+# Keep it out of the Vercel build to avoid confusing the Next.js detector.
+agents/
+Dockerfile
+.dockerignore
+Procfile
+runtime.txt
+requirements.txt
+
+# Local-only runtime artifacts.
+data/checkpoints.sqlite
+data/checkpoints.sqlite-*
+data/consultations.local.jsonl

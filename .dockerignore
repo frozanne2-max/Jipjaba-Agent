@@ -1,0 +1,16 @@
+node_modules
+.next
+out
+.git
+.env
+.env.local
+**/__pycache__
+*.pyc
+.venv
+data/checkpoints.sqlite
+data/checkpoints.sqlite-*
+data/consultations.local.jsonl
+app
+components
+public
+*.md

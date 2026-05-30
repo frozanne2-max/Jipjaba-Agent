@@ -1,8 +1,15 @@
 import { NextRequest } from "next/server";
 import { spawnAgent } from "../_lib/python";
+import { agentServiceUrl } from "../_lib/agent";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const NDJSON_HEADERS = {
+  "Content-Type": "application/x-ndjson; charset=utf-8",
+  "Cache-Control": "no-cache, no-transform",
+  Connection: "keep-alive",
+};
 
 /**
  * POST /api/chat
@@ -34,6 +41,33 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // Production path: proxy to the remote Python agent service (Vercel can't
+  // spawn Python). The service returns the same NDJSON stream we forward.
+  const serviceUrl = agentServiceUrl();
+  if (serviceUrl) {
+    try {
+      const upstream = await fetch(`${serviceUrl}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, customerId }),
+      });
+      if (!upstream.ok || !upstream.body) {
+        const detail = await upstream.text().catch(() => "");
+        return new Response(
+          JSON.stringify({ type: "error", error: `agent service ${upstream.status}`, detail: detail.slice(-2000) }) + "\n",
+          { status: 502, headers: NDJSON_HEADERS }
+        );
+      }
+      return new Response(upstream.body, { headers: NDJSON_HEADERS });
+    } catch (err) {
+      return new Response(
+        JSON.stringify({ type: "error", error: `agent service unreachable: ${String(err)}` }) + "\n",
+        { status: 502, headers: NDJSON_HEADERS }
+      );
+    }
+  }
+
+  // Local-dev fallback: spawn the Python pipeline as a subprocess.
   const args = ["-m", "agents.pipeline", "--stdin", "--stream"];
   if (customerId) args.push("--customer-id", customerId);
 
@@ -95,11 +129,5 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "application/x-ndjson; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-    },
-  });
+  return new Response(stream, { headers: NDJSON_HEADERS });
 }

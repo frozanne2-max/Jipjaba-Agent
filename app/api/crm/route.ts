@@ -1,8 +1,41 @@
 import { NextRequest } from "next/server";
 import { spawnAgent } from "../_lib/python";
+import { agentServiceUrl } from "../_lib/agent";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/** Load the raw consultation list, via the remote service or a subprocess. */
+async function loadConsultations(): Promise<any[]> {
+  const serviceUrl = agentServiceUrl();
+  if (serviceUrl) {
+    const res = await fetch(`${serviceUrl}/crm?limit=500`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`agent service ${res.status}`);
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
+  }
+
+  // Local-dev fallback: spawn Python.
+  const py = [
+    "-c",
+    "import json,sys; from agents import crm_agent; sys.stdout.write(json.dumps(crm_agent.list_consultations(500), ensure_ascii=False))",
+  ];
+  const child = spawnAgent(py);
+  const out = await new Promise<{ ok: boolean; data: string; err: string }>((resolve) => {
+    let data = "";
+    let err = "";
+    child.stdout.on("data", (c: Buffer) => (data += c.toString("utf-8")));
+    child.stderr.on("data", (c: Buffer) => (err += c.toString("utf-8")));
+    child.on("error", (e) => resolve({ ok: false, data: "", err: String(e) }));
+    child.on("close", (code) => resolve({ ok: code === 0, data, err }));
+  });
+  if (!out.ok) throw new Error(out.err.slice(-2000) || "subprocess failed");
+  try {
+    return JSON.parse(out.data || "[]");
+  } catch {
+    return [];
+  }
+}
 
 /**
  * GET /api/crm
@@ -10,38 +43,14 @@ export const dynamic = "force-dynamic";
  * plus simple aggregate stats for the admin dashboard.
  */
 export async function GET(_req: NextRequest) {
-  const py = [
-    "-c",
-    "import json,sys; from agents import crm_agent; sys.stdout.write(json.dumps(crm_agent.list_consultations(500), ensure_ascii=False))",
-  ];
-
-  const child = spawnAgent(py);
-
-  const out = await new Promise<{ ok: boolean; data: string; err: string }>(
-    (resolve) => {
-      let data = "";
-      let err = "";
-      child.stdout.on("data", (c: Buffer) => (data += c.toString("utf-8")));
-      child.stderr.on("data", (c: Buffer) => (err += c.toString("utf-8")));
-      child.on("error", (e) => resolve({ ok: false, data: "", err: String(e) }));
-      child.on("close", (code) =>
-        resolve({ ok: code === 0, data, err })
-      );
-    }
-  );
-
-  if (!out.ok) {
-    return new Response(
-      JSON.stringify({ error: "failed to load consultations", detail: out.err.slice(-2000) }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
   let consultations: any[] = [];
   try {
-    consultations = JSON.parse(out.data || "[]");
-  } catch {
-    consultations = [];
+    consultations = await loadConsultations();
+  } catch (e) {
+    return new Response(
+      JSON.stringify({ error: "failed to load consultations", detail: String(e).slice(-2000) }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
   }
 
   const today = new Date().toISOString().slice(0, 10);

@@ -41,7 +41,7 @@ except ImportError:  # pragma: no cover
     import crm_agent
 
 
-_CHECKPOINT_PATH = os.path.normpath(
+_CHECKPOINT_PATH = os.environ.get("JIPJABA_CHECKPOINT_PATH") or os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "data", "checkpoints.sqlite")
 )
 _HISTORY_LIMIT = 12  # keep the last N stored turns (user+assistant) per thread

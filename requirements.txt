@@ -1,0 +1,3 @@
+# Root requirements for the Python agent service (Railway / Render / Fly).
+# Builders that look for a root requirements.txt will install these.
+-r agents/requirements.txt
