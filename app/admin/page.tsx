@@ -29,6 +29,7 @@ const INTENT_META: Record<string, { label: string; dot: string; cls: string }> =
   PRICE_INQUIRY: { label: "시세문의", dot: "bg-emerald-500", cls: "bg-emerald-50 text-emerald-700" },
   LEGAL_QUESTION: { label: "법률질문", dot: "bg-amber-500", cls: "bg-amber-50 text-amber-700" },
   COMPLAINT: { label: "불만접수", dot: "bg-rose-500", cls: "bg-rose-50 text-rose-700" },
+  APPOINTMENT_BOOKING: { label: "방문예약", dot: "bg-sky-500", cls: "bg-sky-50 text-sky-700" },
 };
 
 function StatusPill({ status }: { status: string }) {
