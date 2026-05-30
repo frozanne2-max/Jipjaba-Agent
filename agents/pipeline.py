@@ -34,11 +34,12 @@ from typing import Annotated, Iterator, Optional, TypedDict
 
 try:
     from .intent_agent import classify, IntentResult
-    from . import response_agent, crm_agent
+    from . import response_agent, crm_agent, calendar_agent
 except ImportError:  # pragma: no cover
     from intent_agent import classify, IntentResult
     import response_agent
     import crm_agent
+    import calendar_agent
 
 
 _CHECKPOINT_PATH = os.environ.get("JIPJABA_CHECKPOINT_PATH") or os.path.normpath(
@@ -78,6 +79,7 @@ class State(TypedDict, total=False):
     intent: dict
     response: str
     crm: dict
+    calendar: dict
 
 
 _GRAPH = None  # cached compiled graph (per process)
@@ -128,14 +130,21 @@ def build_graph():
             ],
         }
 
+    def calendar_node(state: State) -> dict:
+        obj = IntentResult(**state["intent"])
+        result = calendar_agent.book_from_intent(obj, customer_id=state.get("customer_id"))
+        return {"calendar": result}
+
     graph = StateGraph(State)
     graph.add_node("intent", intent_node)
     graph.add_node("response", response_node)
     graph.add_node("crm", crm_node)
+    graph.add_node("calendar", calendar_node)
     graph.set_entry_point("intent")
     graph.add_edge("intent", "response")
     graph.add_edge("response", "crm")
-    graph.add_edge("crm", END)
+    graph.add_edge("crm", "calendar")
+    graph.add_edge("calendar", END)
 
     checkpointer = _make_checkpointer()
     _GRAPH = graph.compile(checkpointer=checkpointer)
@@ -181,6 +190,7 @@ def run(message: str, customer_id: Optional[str] = None) -> dict:
         "intent": intent_dict,
         "response": state.get("response"),
         "crm": state.get("crm"),
+        "calendar": state.get("calendar"),
         "turns": len(state.get("history", [])) // 2,
         "suggestions": suggestions,
     }
@@ -222,6 +232,11 @@ def run_stream(message: str, customer_id: Optional[str] = None) -> Iterator[dict
         customer_id=customer_id,
     )
 
+    try:
+        calendar_result = calendar_agent.book_from_intent(intent, customer_id=customer_id)
+    except Exception as exc:  # noqa: BLE001 - booking is best-effort
+        calendar_result = {"backend": "none", "status": "error", "detail": str(exc)[:300]}
+
     turns = len(history) // 2 + 1
     if app is not None:
         try:
@@ -232,17 +247,25 @@ def run_stream(message: str, customer_id: Optional[str] = None) -> Iterator[dict
                     "customer_id": customer_id,
                     "intent": intent.to_dict(),
                     "response": response_text,
+                    "crm": crm_result,
+                    "calendar": calendar_result,
                     "history": [
                         {"role": "user", "content": message},
                         {"role": "assistant", "content": response_text},
                     ],
                 },
-                as_node="crm",
+                as_node="calendar",
             )
         except Exception:  # noqa: BLE001 - persistence is best-effort
             pass
 
-    yield {"type": "done", "crm": crm_result, "turns": turns, "suggestions": suggestions}
+    yield {
+        "type": "done",
+        "crm": crm_result,
+        "calendar": calendar_result,
+        "turns": turns,
+        "suggestions": suggestions,
+    }
 
 
 def _run_no_memory(message: str, customer_id: Optional[str]) -> dict:
@@ -256,7 +279,14 @@ def _run_no_memory(message: str, customer_id: Optional[str]) -> dict:
         urgency=intent.urgency,
         customer_id=customer_id,
     )
-    return {"intent": intent.to_dict(), "response": response_text, "crm": crm_result, "turns": 1}
+    calendar_result = calendar_agent.book_from_intent(intent, customer_id=customer_id)
+    return {
+        "intent": intent.to_dict(),
+        "response": response_text,
+        "crm": crm_result,
+        "calendar": calendar_result,
+        "turns": 1,
+    }
 
 
 def _main() -> None:

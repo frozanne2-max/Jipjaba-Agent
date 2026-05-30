@@ -19,6 +19,7 @@ const INTENT_META: Record<string, { label: string; cls: string }> = {
   PRICE_INQUIRY: { label: "시세문의", cls: "bg-emerald-50 text-emerald-700" },
   LEGAL_QUESTION: { label: "법률질문", cls: "bg-amber-50 text-amber-700" },
   COMPLAINT: { label: "불만접수", cls: "bg-rose-50 text-rose-700" },
+  APPOINTMENT_BOOKING: { label: "방문예약", cls: "bg-sky-50 text-sky-700" },
 };
 
 const SUGGESTIONS = [

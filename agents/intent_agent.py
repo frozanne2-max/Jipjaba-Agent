@@ -21,6 +21,7 @@ INTENTS = [
     "PRICE_INQUIRY",
     "LEGAL_QUESTION",
     "COMPLAINT",
+    "APPOINTMENT_BOOKING",
 ]
 
 LOCATIONS = ["강남", "마포", "성수"]
@@ -37,6 +38,7 @@ class IntentResult:
     property_type: Optional[str] = None
     budget: Optional[int] = None
     urgency: str = "normal"  # low | normal | high
+    appointment_datetime: Optional[str] = None  # ISO 8601 start time if booking
     raw_message: str = ""
     notes: str = ""
 
@@ -56,7 +58,7 @@ CLASSIFY_TOOL = {
                 "description": (
                     "PROPERTY_SEARCH=매물 찾기, CONTRACT_INQUIRY=계약/절차 문의, "
                     "PRICE_INQUIRY=시세 문의, LEGAL_QUESTION=법률/권리 질문, "
-                    "COMPLAINT=불만/항의/분쟁"
+                    "COMPLAINT=불만/항의/분쟁, APPOINTMENT_BOOKING=방문/상담 예약 잡기"
                 ),
             },
             "confidence": {
@@ -79,6 +81,14 @@ CLASSIFY_TOOL = {
                 "type": "string",
                 "enum": ["low", "normal", "high"],
                 "description": "긴급도. 분쟁/즉시 처리 요청은 high",
+            },
+            "appointment_datetime": {
+                "type": ["string", "null"],
+                "description": (
+                    "APPOINTMENT_BOOKING일 때 고객이 원하는 방문/상담 일시를 "
+                    "ISO 8601(예: 2026-06-03T15:00:00)로. 상대 표현(내일 3시 등)은 "
+                    "시스템이 제공한 [현재시각] 기준으로 계산. 불명확하면 null"
+                ),
             },
             "notes": {
                 "type": "string",
@@ -111,6 +121,7 @@ _KEYWORDS = {
     "LEGAL_QUESTION": ["확정일자", "전입신고", "대항력", "등기부", "근저당", "갱신청구", "법", "권리", "보증금 반환", "임차권등기"],
     "PRICE_INQUIRY": ["시세", "얼마", "평균", "가격대", "전세가율", "비싼", "싼", "적정가"],
     "CONTRACT_INQUIRY": ["계약", "복비", "중개수수료", "계약금", "절차", "서류", "보증보험", "특약"],
+    "APPOINTMENT_BOOKING": ["예약", "방문", "보러", "방문하고", "상담 예약", "예약하고", "예약할", "일정 잡", "미팅", "방문할", "찾아갈", "보고 싶은데 언제"],
     "PROPERTY_SEARCH": ["찾", "구해", "매물", "원룸", "투룸", "2룸", "아파트", "방", "추천", "보여"],
 }
 
@@ -187,10 +198,13 @@ def _llm_classify(message: str, history=None) -> IntentResult:
     client = anthropic.Anthropic()
     messages = _history_messages(history)
     messages.append({"role": "user", "content": message})
+    from datetime import datetime, timezone
+
+    now_iso = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
     resp = client.messages.create(
         model=MODEL,
         max_tokens=512,
-        system=SYSTEM_PROMPT,
+        system=f"{SYSTEM_PROMPT}\n[현재시각] {now_iso} (Asia/Seoul 기준 상대 일시 계산에 사용)",
         tools=[CLASSIFY_TOOL],
         tool_choice={"type": "tool", "name": "classify_intent"},
         messages=messages,
@@ -208,6 +222,7 @@ def _llm_classify(message: str, history=None) -> IntentResult:
         property_type=_normalize_type(data.get("property_type")),
         budget=data.get("budget"),
         urgency=data.get("urgency", "normal"),
+        appointment_datetime=data.get("appointment_datetime"),
         raw_message=message,
         notes=data.get("notes", ""),
     )
