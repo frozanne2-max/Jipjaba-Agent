@@ -19,7 +19,7 @@ except ImportError:  # pragma: no cover - script execution
     from intent_agent import IntentResult
     import data_loader
 
-MODEL = os.environ.get("RESPONSE_MODEL", "claude-sonnet-4-6")
+MODEL = os.environ.get("RESPONSE_MODEL", "claude-haiku-4-5")
 SUGGEST_MODEL = os.environ.get("SUGGEST_MODEL", MODEL)
 
 SUGGEST_TOOL = {

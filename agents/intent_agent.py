@@ -26,7 +26,7 @@ INTENTS = [
 LOCATIONS = ["강남", "마포", "성수"]
 PROPERTY_TYPES = ["원룸", "2룸", "투룸", "아파트"]
 
-MODEL = os.environ.get("INTENT_MODEL", "claude-sonnet-4-6")
+MODEL = os.environ.get("INTENT_MODEL", "claude-haiku-4-5")
 
 
 @dataclass
