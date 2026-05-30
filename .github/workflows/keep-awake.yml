@@ -1,0 +1,55 @@
+name: Keep agent service awake
+
+# Render's free tier spins the web service down after ~15 minutes of
+# inactivity (cold start ~30s on the next request). This workflow pings the
+# FastAPI /health endpoint every 10 minutes to keep it warm.
+#
+# Setup:
+#   Repo → Settings → Secrets and variables → Actions → New repository secret
+#     Name:  AGENT_SERVICE_URL
+#     Value: https://your-agent-service.onrender.com   (no trailing slash needed)
+#
+# Notes:
+#   - GitHub's scheduled runner can be delayed under load; 10 min leaves margin
+#     under the 15 min sleep threshold. Drop to */5 if you still see cold starts.
+#   - GitHub disables cron workflows after 60 days of repo inactivity — push or
+#     use the "Run workflow" button to re-arm.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *" # every 10 minutes
+  workflow_dispatch: {} # allow manual trigger from the Actions tab
+
+concurrency:
+  group: keep-awake
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping /health
+        env:
+          AGENT_SERVICE_URL: ${{ secrets.AGENT_SERVICE_URL }}
+        run: |
+          set -u
+          if [ -z "${AGENT_SERVICE_URL:-}" ]; then
+            echo "::warning::AGENT_SERVICE_URL secret is not set — skipping."
+            exit 0
+          fi
+          URL="${AGENT_SERVICE_URL%/}/health"
+          echo "Pinging $URL"
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 40 "$URL" || echo "000")
+          echo "First response: HTTP $code"
+          if [ "$code" = "200" ]; then
+            echo "Service is awake."
+            exit 0
+          fi
+          # Likely a cold start — wait for spin-up and retry.
+          echo "Non-200; waiting for cold start and retrying..."
+          sleep 35
+          curl -fsS --max-time 90 "$URL" > /dev/null && echo "Awake after retry." || {
+            echo "::error::Health check failed for $URL"
+            exit 1
+          }

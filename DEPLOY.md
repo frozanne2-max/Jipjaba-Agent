@@ -71,6 +71,23 @@ vercel --prod     # 프로덕션 배포
 2. Vercel에 `AGENT_SERVICE_URL` 설정 → `vercel --prod`.
 3. 배포된 사이트에서 채팅/관리자 대시보드 동작 확인.
 
+## 3단계 — (Render 무료 플랜) 서버 슬립 방지 cron
+
+Render 무료 웹 서비스는 약 **15분 비활성 시 잠자기**(다음 요청에서 콜드스타트 ~30초)에 들어갑니다. 저장소에 포함된 GitHub Actions 워크플로 `.github/workflows/keep-awake.yml`가 **10분마다 `/health`를 핑**하여 깨워 둡니다.
+
+설정:
+1. 저장소를 GitHub에 푸시.
+2. **Repo → Settings → Secrets and variables → Actions → New repository secret**
+   - Name: `AGENT_SERVICE_URL`
+   - Value: Render 서비스 URL (예: `https://jipjaba-agents.onrender.com`)
+3. **Actions** 탭에서 워크플로 활성화(최초 1회). 수동 실행은 *Run workflow* 버튼.
+
+참고:
+- GitHub 스케줄러는 부하 시 지연될 수 있음 → 콜드스타트가 계속 보이면 cron을 `*/5`로.
+- GitHub은 저장소 60일 비활성 시 cron 워크플로를 비활성화함(푸시/수동 실행으로 재활성).
+- 더 견고하게는 [cron-job.org](https://cron-job.org)/UptimeRobot 같은 외부 핑 서비스도 가능.
+- Railway/Fly는 기본적으로 슬립하지 않으므로 이 단계는 불필요(원하면 헬스 모니터링용으로 유지).
+
 ## 참고 / 한계
 - **CORS:** 서비스는 `*` 허용. 서버-투-서버 프록시가 기본 경로라 보통 무관.
 - **메모리 영속화:** SqliteSaver는 단일 인스턴스 디스크 기준. 다중 인스턴스로
