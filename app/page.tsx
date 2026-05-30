@@ -5,12 +5,21 @@ import { TopNav } from "@/components/TopNav";
 import { Logo } from "@/components/Logo";
 import { Markdown } from "@/components/Markdown";
 
+type CalendarInfo = {
+  status: string; // booked | needs_datetime | unconfigured | error | skipped | none
+  summary?: string;
+  start?: string;
+  end?: string;
+  html_link?: string;
+};
+
 type Msg = {
   role: "user" | "assistant";
   text: string;
   intent?: string;
   confidence?: number;
   suggestions?: string[];
+  calendar?: CalendarInfo;
 };
 
 const INTENT_META: Record<string, { label: string; cls: string }> = {
@@ -28,6 +37,108 @@ const SUGGESTIONS = [
   { icon: "📝", text: "전세 계약할 때 확정일자 꼭 받아야 하나요?" },
   { icon: "🛟", text: "집주인이 보증금을 안 돌려줘요" },
 ];
+
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+function fmtKDateTime(iso?: string) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAYS[d.getDay()]}) ${hh}:${mm}`;
+}
+
+function CalendarIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" className={className}>
+      <rect x="3" y="4.5" width="18" height="16" rx="2.5" stroke="currentColor" strokeWidth="2" />
+      <path d="M3 9h18M8 2.5v4M16 2.5v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function AppointmentCard({ cal }: { cal: CalendarInfo }) {
+  return (
+    <div className="mt-2.5 w-full max-w-sm rounded-2xl border border-sky-200 bg-sky-50/70 p-3.5 shadow-soft">
+      <div className="flex items-center gap-1.5 text-[12px] font-bold text-sky-700">
+        <CalendarIcon /> 방문 예약 확정
+      </div>
+      <div className="mt-1.5 text-[15px] font-extrabold text-ink">{fmtKDateTime(cal.start)}</div>
+      {cal.summary && <div className="mt-0.5 text-[12.5px] text-ink-soft">{cal.summary}</div>}
+      {cal.html_link && (
+        <a
+          href={cal.html_link}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="mt-2.5 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-[12.5px] font-semibold text-sky-700 ring-1 ring-sky-200 transition-colors hover:bg-sky-100"
+        >
+          캘린더에서 보기 →
+        </a>
+      )}
+    </div>
+  );
+}
+
+function AppointmentPicker({ onPick }: { onPick: (text: string) => void }) {
+  const slots = [
+    { days: 1, h: 14 },
+    { days: 1, h: 16 },
+    { days: 2, h: 11 },
+    { days: 3, h: 15 },
+  ].map(({ days, h }) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    d.setHours(h, 0, 0, 0);
+    const label = `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS[d.getDay()]}) ${h}:00`;
+    const send = `${d.getMonth() + 1}월 ${d.getDate()}일 ${h}시에 방문할게요`;
+    return { label, send };
+  });
+
+  function pickCustom(value: string) {
+    if (!value) return;
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return;
+    onPick(
+      `${d.getMonth() + 1}월 ${d.getDate()}일 ${d.getHours()}시 ${d.getMinutes()}분에 방문할게요`
+    );
+  }
+
+  return (
+    <div className="mt-2.5 w-full max-w-sm rounded-2xl border border-line bg-white p-3 shadow-soft">
+      <div className="flex items-center gap-1.5 text-[12px] font-bold text-ink-soft">
+        <CalendarIcon /> 방문 일시를 선택하세요
+      </div>
+      <div className="mt-2.5 flex flex-wrap gap-2">
+        {slots.map((s) => (
+          <button
+            key={s.label}
+            onClick={() => onPick(s.send)}
+            className="rounded-full border border-line bg-surface px-3 py-1.5 text-[12.5px] font-medium text-ink-soft transition-all hover:-translate-y-0.5 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+      <div className="mt-2.5 flex items-center gap-2 border-t border-line/70 pt-2.5">
+        <input
+          type="datetime-local"
+          onChange={(e) => (e.currentTarget.dataset.val = e.target.value)}
+          className="min-w-0 flex-1 rounded-xl border border-line bg-surface px-2.5 py-1.5 text-[12.5px] text-ink outline-none focus:border-sky-300"
+        />
+        <button
+          onClick={(e) => {
+            const input = e.currentTarget.parentElement?.querySelector("input");
+            pickCustom((input as HTMLInputElement)?.value || "");
+          }}
+          className="shrink-0 rounded-xl bg-sky-600 px-3 py-1.5 text-[12.5px] font-semibold text-white transition-colors hover:bg-sky-700"
+        >
+          예약
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function TypingDots() {
   return (
@@ -142,6 +253,7 @@ export default function Home() {
               copy[assistantIdx] = {
                 ...copy[assistantIdx],
                 suggestions: Array.isArray(evt.suggestions) ? evt.suggestions : [],
+                calendar: evt.calendar || undefined,
               };
               return copy;
             });
@@ -333,6 +445,15 @@ function MessageRow({
             <TypingDots />
           )}
         </div>
+        {m.calendar?.status === "booked" && <AppointmentCard cal={m.calendar} />}
+        {m.calendar?.status === "needs_datetime" && isLast && !busy && (
+          <AppointmentPicker onPick={onPick} />
+        )}
+        {(m.calendar?.status === "error" || m.calendar?.status === "unconfigured") && (
+          <div className="mt-2.5 w-full max-w-sm rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[12.5px] font-medium text-amber-700">
+            예약 접수에 일시적인 문제가 있어, 담당 상담원이 확인 후 연락드리겠습니다.
+          </div>
+        )}
         {showSuggestions && (
           <div className="mt-2.5 flex flex-wrap gap-2">
             {m.suggestions!.map((q) => (

@@ -23,10 +23,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 try:
-    from . import pipeline, crm_agent
+    from . import pipeline, crm_agent, calendar_agent
 except ImportError:  # pragma: no cover - script execution
     import pipeline
     import crm_agent
+    import calendar_agent
 
 app = FastAPI(title="JipJaba Agent Service", version="1.0.0")
 
@@ -75,3 +76,8 @@ async def chat(req: Request):
 @app.get("/crm")
 def crm(limit: int = 500):
     return JSONResponse(crm_agent.list_consultations(limit))
+
+
+@app.get("/appointments")
+def appointments(limit: int = 50):
+    return JSONResponse(calendar_agent.list_appointments(limit))

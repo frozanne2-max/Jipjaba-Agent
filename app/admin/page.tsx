@@ -23,6 +23,28 @@ type Stats = {
   byIntent: Record<string, number>;
 };
 
+type Appointment = {
+  event_id: string;
+  summary: string;
+  location: string;
+  start: string;
+  end: string;
+  html_link: string;
+  status: string;
+  customer_id: string;
+};
+
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+
+function fmtAppt(iso: string) {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAYS[d.getDay()]}) ${hh}:${mm}`;
+}
+
 const INTENT_META: Record<string, { label: string; dot: string; cls: string }> = {
   PROPERTY_SEARCH: { label: "매물검색", dot: "bg-brand-500", cls: "bg-brand-50 text-brand-700" },
   CONTRACT_INQUIRY: { label: "계약문의", dot: "bg-violet-500", cls: "bg-violet-50 text-violet-700" },
@@ -62,18 +84,27 @@ function fmtTime(ts: string) {
 export default function Admin() {
   const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [view, setView] = useState<"consultations" | "appointments">("consultations");
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/crm", { cache: "no-store" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "불러오기 실패");
+      const [crmRes, apptRes] = await Promise.all([
+        fetch("/api/crm", { cache: "no-store" }),
+        fetch("/api/appointments", { cache: "no-store" }),
+      ]);
+      const data = await crmRes.json();
+      if (!crmRes.ok) throw new Error(data?.error || "불러오기 실패");
       setConsultations(data.consultations || []);
       setStats(data.stats || null);
+      if (apptRes.ok) {
+        const ad = await apptRes.json();
+        setAppointments(ad.appointments || []);
+      }
     } catch (e: any) {
       setError(e?.message || String(e));
     } finally {
@@ -179,7 +210,29 @@ export default function Admin() {
           </div>
         )}
 
-        {/* Table */}
+        {/* Tab switcher */}
+        <div className="mt-5 inline-flex rounded-full border border-line bg-white p-1 shadow-soft">
+          {([
+            ["consultations", "상담 내역", consultations.length],
+            ["appointments", "방문 예약", appointments.length],
+          ] as const).map(([key, label, count]) => (
+            <button
+              key={key}
+              onClick={() => setView(key)}
+              className={`rounded-full px-4 py-1.5 text-[13px] font-semibold transition-colors ${
+                view === key ? "bg-brand text-white shadow-brand" : "text-ink-muted hover:text-ink"
+              }`}
+            >
+              {label}
+              <span className={`ml-1.5 ${view === key ? "text-white/80" : "text-ink-faint"}`}>
+                {count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Consultations table */}
+        {view === "consultations" && (
         <section className="mt-3 overflow-hidden rounded-3xl border border-line bg-white shadow-soft">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-sm">
@@ -262,6 +315,70 @@ export default function Admin() {
             </table>
           </div>
         </section>
+        )}
+
+        {/* Appointments table */}
+        {view === "appointments" && (
+          <section className="mt-3 overflow-hidden rounded-3xl border border-line bg-white shadow-soft">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-left text-sm">
+                <thead>
+                  <tr className="border-b border-line whitespace-nowrap text-[11px] font-bold uppercase tracking-wide text-ink-muted">
+                    <th className="px-5 py-3.5">방문 일시</th>
+                    <th className="px-5 py-3.5">고객</th>
+                    <th className="px-5 py-3.5">내용</th>
+                    <th className="px-5 py-3.5">위치</th>
+                    <th className="px-5 py-3.5">캘린더</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line/70">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={5} className="px-5 py-16 text-center text-ink-muted">
+                        불러오는 중…
+                      </td>
+                    </tr>
+                  ) : appointments.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-5 py-16 text-center text-ink-muted">
+                        예정된 방문 예약이 없어요.
+                      </td>
+                    </tr>
+                  ) : (
+                    appointments.map((a) => (
+                      <tr key={a.event_id} className="transition-colors hover:bg-surface/60">
+                        <td className="whitespace-nowrap px-5 py-4 font-semibold text-ink">
+                          {fmtAppt(a.start)}
+                        </td>
+                        <td className="px-5 py-4 font-mono text-[12px] text-ink-soft">
+                          {a.customer_id || "-"}
+                        </td>
+                        <td className="max-w-xs truncate px-5 py-4 text-ink-soft">{a.summary}</td>
+                        <td className="whitespace-nowrap px-5 py-4 text-ink-soft">
+                          {a.location || "-"}
+                        </td>
+                        <td className="whitespace-nowrap px-5 py-4">
+                          {a.html_link ? (
+                            <a
+                              href={a.html_link}
+                              target="_blank"
+                              rel="noreferrer noopener"
+                              className="font-semibold text-brand hover:text-brand-600"
+                            >
+                              열기 →
+                            </a>
+                          ) : (
+                            "-"
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
       </main>
     </div>
   );

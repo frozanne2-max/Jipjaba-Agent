@@ -103,6 +103,7 @@ def book_appointment(
     description: Optional[str] = None,
     location: Optional[str] = None,
     attendee_email: Optional[str] = None,
+    customer_id: Optional[str] = None,
 ) -> dict:
     """Create a Google Calendar event. Returns a structured result dict."""
     start_dt = _parse_start(start_iso)
@@ -133,6 +134,11 @@ def book_appointment(
         event_body["location"] = location
     if attendee_email:
         event_body["attendees"] = [{"email": attendee_email}]
+    # Tag our events so we can list only JipJaba bookings (not the user's
+    # personal events) on the admin dashboard.
+    event_body["extendedProperties"] = {
+        "private": {"jipjaba": "1", "customer_id": customer_id or ""}
+    }
 
     try:
         created = (
@@ -194,7 +200,57 @@ def book_from_intent(intent, customer_id: Optional[str] = None) -> dict:
         start_iso=start_iso,
         description=description,
         location=location,
+        customer_id=customer_id,
     )
+
+
+def list_appointments(max_results: int = 50) -> list:
+    """List upcoming JipJaba-created appointments (status="confirmed").
+
+    Filters by our private extended property so the user's personal calendar
+    events are excluded. Returns [] when calendar isn't configured.
+    """
+    from datetime import datetime, timezone
+
+    service = _service()
+    if service is None:
+        return []
+    try:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        resp = (
+            service.events()
+            .list(
+                calendarId=CALENDAR_ID,
+                privateExtendedProperty="jipjaba=1",
+                timeMin=now_iso,
+                singleEvents=True,
+                orderBy="startTime",
+                maxResults=max_results,
+            )
+            .execute()
+        )
+    except Exception:  # noqa: BLE001
+        return []
+
+    out = []
+    for ev in resp.get("items", []):
+        start = ev.get("start", {})
+        end = ev.get("end", {})
+        props = (ev.get("extendedProperties", {}) or {}).get("private", {}) or {}
+        out.append(
+            {
+                "event_id": ev.get("id"),
+                "summary": ev.get("summary", ""),
+                "location": ev.get("location", ""),
+                "description": ev.get("description", ""),
+                "start": start.get("dateTime") or start.get("date"),
+                "end": end.get("dateTime") or end.get("date"),
+                "html_link": ev.get("htmlLink"),
+                "status": ev.get("status", "confirmed"),
+                "customer_id": props.get("customer_id", ""),
+            }
+        )
+    return out
 
 
 if __name__ == "__main__":
