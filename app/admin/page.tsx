@@ -317,9 +317,14 @@ export default function Admin() {
         </section>
         )}
 
-        {/* Appointments table */}
+        {/* Appointments calendar + list */}
         {view === "appointments" && (
-          <section className="mt-3 overflow-hidden rounded-3xl border border-line bg-white shadow-soft">
+          <div className="mt-3 space-y-3">
+            <MonthCalendar appointments={appointments} />
+            <section className="overflow-hidden rounded-3xl border border-line bg-white shadow-soft">
+            <div className="border-b border-line px-5 py-3 text-[12px] font-bold uppercase tracking-wide text-ink-muted">
+              전체 목록
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px] text-left text-sm">
                 <thead>
@@ -377,10 +382,156 @@ export default function Admin() {
                 </tbody>
               </table>
             </div>
-          </section>
+            </section>
+          </div>
         )}
       </main>
     </div>
+  );
+}
+
+function MonthCalendar({ appointments }: { appointments: Appointment[] }) {
+  const now = new Date();
+  const [cursor, setCursor] = useState({ y: now.getFullYear(), m: now.getMonth() });
+
+  const todayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+
+  const byDay = new Map<string, Appointment[]>();
+  for (const a of appointments) {
+    const d = new Date(a.start);
+    if (isNaN(d.getTime())) continue;
+    const k = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    if (!byDay.has(k)) byDay.set(k, []);
+    byDay.get(k)!.push(a);
+  }
+  for (const arr of byDay.values())
+    arr.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+
+  const first = new Date(cursor.y, cursor.m, 1);
+  const startWeekday = first.getDay();
+  const daysInMonth = new Date(cursor.y, cursor.m + 1, 0).getDate();
+  const cells: (number | null)[] = [];
+  for (let i = 0; i < startWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  function shift(delta: number) {
+    setCursor((c) => {
+      const d = new Date(c.y, c.m + delta, 1);
+      return { y: d.getFullYear(), m: d.getMonth() };
+    });
+  }
+  function fmtTime(iso: string) {
+    const d = new Date(iso);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  }
+
+  const monthCount = appointments.filter((a) => {
+    const d = new Date(a.start);
+    return d.getFullYear() === cursor.y && d.getMonth() === cursor.m;
+  }).length;
+
+  return (
+    <section className="overflow-hidden rounded-3xl border border-line bg-white shadow-soft">
+      <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+        <div className="flex items-center gap-3">
+          <h3 className="text-lg font-extrabold text-ink">
+            {cursor.y}년 {cursor.m + 1}월
+          </h3>
+          <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-[12px] font-bold text-sky-700">
+            예약 {monthCount}
+          </span>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => shift(-1)}
+            className="grid h-8 w-8 place-items-center rounded-full text-ink-muted transition-colors hover:bg-surface"
+            aria-label="이전 달"
+          >
+            ‹
+          </button>
+          <button
+            onClick={() => setCursor({ y: now.getFullYear(), m: now.getMonth() })}
+            className="rounded-full border border-line px-3 py-1 text-[12.5px] font-semibold text-ink-soft transition-colors hover:bg-surface"
+          >
+            오늘
+          </button>
+          <button
+            onClick={() => shift(1)}
+            className="grid h-8 w-8 place-items-center rounded-full text-ink-muted transition-colors hover:bg-surface"
+            aria-label="다음 달"
+          >
+            ›
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 border-b border-line bg-surface/50 text-center text-[11px] font-bold">
+        {WEEKDAYS.map((w, i) => (
+          <div
+            key={w}
+            className={`py-2 ${i === 0 ? "text-rose-500" : i === 6 ? "text-brand-600" : "text-ink-muted"}`}
+          >
+            {w}
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7">
+        {cells.map((day, idx) => {
+          const key = day ? `${cursor.y}-${cursor.m}-${day}` : `e${idx}`;
+          const events = day ? byDay.get(`${cursor.y}-${cursor.m}-${day}`) || [] : [];
+          const isToday = day && `${cursor.y}-${cursor.m}-${day}` === todayKey;
+          const dow = idx % 7;
+          return (
+            <div
+              key={key}
+              className={`min-h-[92px] border-b border-r border-line/60 p-1.5 [&:nth-child(7n)]:border-r-0 ${
+                day ? "" : "bg-surface/30"
+              }`}
+            >
+              {day && (
+                <>
+                  <div
+                    className={`mb-1 flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold ${
+                      isToday
+                        ? "bg-brand text-white"
+                        : dow === 0
+                          ? "text-rose-500"
+                          : dow === 6
+                            ? "text-brand-600"
+                            : "text-ink-soft"
+                    }`}
+                  >
+                    {day}
+                  </div>
+                  <div className="space-y-1">
+                    {events.slice(0, 3).map((ev) => (
+                      <a
+                        key={ev.event_id}
+                        href={ev.html_link || undefined}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        title={`${fmtTime(ev.start)} ${ev.summary}${ev.location ? ` · ${ev.location}` : ""}`}
+                        className="block truncate rounded-md bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700 transition-colors hover:bg-sky-100"
+                      >
+                        <span className="font-bold">{fmtTime(ev.start)}</span>{" "}
+                        {ev.location || ev.summary}
+                      </a>
+                    ))}
+                    {events.length > 3 && (
+                      <div className="px-1.5 text-[10.5px] font-semibold text-ink-faint">
+                        +{events.length - 3}건 더
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
