@@ -393,6 +393,7 @@ export default function Admin() {
 function MonthCalendar({ appointments }: { appointments: Appointment[] }) {
   const now = new Date();
   const [cursor, setCursor] = useState({ y: now.getFullYear(), m: now.getMonth() });
+  const [selected, setSelected] = useState<string | null>(null);
 
   const todayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
 
@@ -416,6 +417,7 @@ function MonthCalendar({ appointments }: { appointments: Appointment[] }) {
   while (cells.length % 7 !== 0) cells.push(null);
 
   function shift(delta: number) {
+    setSelected(null);
     setCursor((c) => {
       const d = new Date(c.y, c.m + delta, 1);
       return { y: d.getFullYear(), m: d.getMonth() };
@@ -430,6 +432,11 @@ function MonthCalendar({ appointments }: { appointments: Appointment[] }) {
     const d = new Date(a.start);
     return d.getFullYear() === cursor.y && d.getMonth() === cursor.m;
   }).length;
+
+  const selectedEvents = selected ? byDay.get(selected) || [] : [];
+  const selectedDayNum = selected ? Number(selected.split("-")[2]) : null;
+  const selectedDow =
+    selectedDayNum != null ? new Date(cursor.y, cursor.m, selectedDayNum).getDay() : null;
 
   return (
     <section className="overflow-hidden rounded-3xl border border-line bg-white shadow-soft">
@@ -479,58 +486,131 @@ function MonthCalendar({ appointments }: { appointments: Appointment[] }) {
 
       <div className="grid grid-cols-7">
         {cells.map((day, idx) => {
-          const key = day ? `${cursor.y}-${cursor.m}-${day}` : `e${idx}`;
-          const events = day ? byDay.get(`${cursor.y}-${cursor.m}-${day}`) || [] : [];
-          const isToday = day && `${cursor.y}-${cursor.m}-${day}` === todayKey;
+          const dayKey = day ? `${cursor.y}-${cursor.m}-${day}` : null;
+          const events = dayKey ? byDay.get(dayKey) || [] : [];
+          const isToday = dayKey === todayKey;
+          const isSelected = dayKey != null && dayKey === selected;
           const dow = idx % 7;
+          if (!day) {
+            return (
+              <div
+                key={`e${idx}`}
+                className="min-h-[96px] border-b border-r border-line/60 bg-surface/30 [&:nth-child(7n)]:border-r-0"
+              />
+            );
+          }
           return (
-            <div
-              key={key}
-              className={`min-h-[92px] border-b border-r border-line/60 p-1.5 [&:nth-child(7n)]:border-r-0 ${
-                day ? "" : "bg-surface/30"
+            <button
+              key={dayKey}
+              type="button"
+              onClick={() => setSelected(isSelected ? null : dayKey)}
+              className={`group relative min-h-[96px] cursor-pointer border-b border-r border-line/60 p-1.5 text-left outline-none transition-colors [&:nth-child(7n)]:border-r-0 ${
+                isSelected ? "bg-brand-50/70" : "hover:bg-surface"
               }`}
             >
-              {day && (
-                <>
-                  <div
-                    className={`mb-1 flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold ${
-                      isToday
-                        ? "bg-brand text-white"
-                        : dow === 0
-                          ? "text-rose-500"
-                          : dow === 6
-                            ? "text-brand-600"
-                            : "text-ink-soft"
-                    }`}
-                  >
-                    {day}
-                  </div>
-                  <div className="space-y-1">
-                    {events.slice(0, 3).map((ev) => (
-                      <a
-                        key={ev.event_id}
-                        href={ev.html_link || undefined}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                        title={`${fmtTime(ev.start)} ${ev.summary}${ev.location ? ` · ${ev.location}` : ""}`}
-                        className="block truncate rounded-md bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700 transition-colors hover:bg-sky-100"
-                      >
-                        <span className="font-bold">{fmtTime(ev.start)}</span>{" "}
-                        {ev.location || ev.summary}
-                      </a>
-                    ))}
-                    {events.length > 3 && (
-                      <div className="px-1.5 text-[10.5px] font-semibold text-ink-faint">
-                        +{events.length - 3}건 더
-                      </div>
-                    )}
-                  </div>
-                </>
+              {isSelected && (
+                <span className="pointer-events-none absolute inset-0 rounded-[3px] ring-2 ring-inset ring-brand" />
               )}
-            </div>
+              <div
+                className={`mb-1 flex h-6 w-6 items-center justify-center rounded-full text-[12px] font-semibold transition-colors ${
+                  isToday
+                    ? "bg-brand text-white"
+                    : `${
+                        dow === 0 ? "text-rose-500" : dow === 6 ? "text-brand-600" : "text-ink-soft"
+                      } group-hover:bg-white`
+                }`}
+              >
+                {day}
+              </div>
+              <div className="space-y-1">
+                {events.slice(0, 3).map((ev) => (
+                  <a
+                    key={ev.event_id}
+                    href={ev.html_link || undefined}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    onClick={(e) => e.stopPropagation()}
+                    title={`${fmtTime(ev.start)} ${ev.summary}${ev.location ? ` · ${ev.location}` : ""}`}
+                    className="flex items-center gap-1 truncate rounded-md bg-sky-100/70 px-1.5 py-0.5 text-[11px] font-medium text-sky-700 transition-colors hover:bg-sky-200"
+                  >
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sky-500" />
+                    <span className="truncate">
+                      <span className="font-bold">{fmtTime(ev.start)}</span>{" "}
+                      {ev.location || ev.summary}
+                    </span>
+                  </a>
+                ))}
+                {events.length > 3 && (
+                  <div className="px-1.5 text-[10.5px] font-semibold text-ink-faint">
+                    +{events.length - 3}건 더
+                  </div>
+                )}
+              </div>
+            </button>
           );
         })}
       </div>
+
+      {/* Selected-day detail panel (Google Calendar style) */}
+      {selected && (
+        <div className="border-t border-line bg-surface/40 px-5 py-4 animate-fade-up">
+          <div className="flex items-center justify-between">
+            <h4 className="text-[14px] font-extrabold text-ink">
+              {cursor.m + 1}월 {selectedDayNum}일
+              {selectedDow != null && (
+                <span className="ml-1.5 font-bold text-ink-muted">
+                  ({WEEKDAYS[selectedDow]})
+                </span>
+              )}
+              <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-bold text-sky-700">
+                {selectedEvents.length}건
+              </span>
+            </h4>
+            <button
+              onClick={() => setSelected(null)}
+              className="grid h-7 w-7 place-items-center rounded-full text-ink-muted transition-colors hover:bg-white"
+              aria-label="닫기"
+            >
+              ✕
+            </button>
+          </div>
+
+          {selectedEvents.length === 0 ? (
+            <p className="mt-3 text-[13px] text-ink-muted">이 날 예약된 방문이 없어요.</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {selectedEvents.map((ev) => (
+                <div
+                  key={ev.event_id}
+                  className="flex items-start gap-3 rounded-2xl border border-line bg-white p-3 shadow-soft"
+                >
+                  <div className="mt-0.5 w-14 shrink-0 text-center">
+                    <div className="text-[14px] font-extrabold text-sky-700">{fmtTime(ev.start)}</div>
+                    {ev.end && <div className="text-[11px] text-ink-faint">~{fmtTime(ev.end)}</div>}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13.5px] font-bold text-ink">{ev.summary}</div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[12px] text-ink-soft">
+                      {ev.location && <span>📍 {ev.location}</span>}
+                      {ev.customer_id && <span className="font-mono">{ev.customer_id}</span>}
+                    </div>
+                  </div>
+                  {ev.html_link && (
+                    <a
+                      href={ev.html_link}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="shrink-0 self-center rounded-full bg-sky-600 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-sky-700"
+                    >
+                      열기 →
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </section>
   );
 }
