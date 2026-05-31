@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { TopNav } from "@/components/TopNav";
 
 type Consultation = {
@@ -27,6 +27,7 @@ type Appointment = {
   event_id: string;
   summary: string;
   location: string;
+  description: string;
   start: string;
   end: string;
   html_link: string;
@@ -394,6 +395,7 @@ function MonthCalendar({ appointments }: { appointments: Appointment[] }) {
   const now = new Date();
   const [cursor, setCursor] = useState({ y: now.getFullYear(), m: now.getMonth() });
   const [selected, setSelected] = useState<string | null>(null);
+  const [openEvent, setOpenEvent] = useState<Appointment | null>(null);
 
   const todayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
 
@@ -524,21 +526,22 @@ function MonthCalendar({ appointments }: { appointments: Appointment[] }) {
               </div>
               <div className="space-y-1">
                 {events.slice(0, 3).map((ev) => (
-                  <a
+                  <button
                     key={ev.event_id}
-                    href={ev.html_link || undefined}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    onClick={(e) => e.stopPropagation()}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenEvent(ev);
+                    }}
                     title={`${fmtTime(ev.start)} ${ev.summary}${ev.location ? ` · ${ev.location}` : ""}`}
-                    className="flex items-center gap-1 truncate rounded-md bg-sky-100/70 px-1.5 py-0.5 text-[11px] font-medium text-sky-700 transition-colors hover:bg-sky-200"
+                    className="flex w-full items-center gap-1 truncate rounded-md bg-sky-100/70 px-1.5 py-0.5 text-left text-[11px] font-medium text-sky-700 transition-colors hover:bg-sky-200"
                   >
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sky-500" />
                     <span className="truncate">
                       <span className="font-bold">{fmtTime(ev.start)}</span>{" "}
                       {ev.location || ev.summary}
                     </span>
-                  </a>
+                  </button>
                 ))}
                 {events.length > 3 && (
                   <div className="px-1.5 text-[10.5px] font-semibold text-ink-faint">
@@ -580,9 +583,11 @@ function MonthCalendar({ appointments }: { appointments: Appointment[] }) {
           ) : (
             <div className="mt-3 space-y-2">
               {selectedEvents.map((ev) => (
-                <div
+                <button
                   key={ev.event_id}
-                  className="flex items-start gap-3 rounded-2xl border border-line bg-white p-3 shadow-soft"
+                  type="button"
+                  onClick={() => setOpenEvent(ev)}
+                  className="flex w-full items-start gap-3 rounded-2xl border border-line bg-white p-3 text-left shadow-soft transition-colors hover:border-sky-200 hover:bg-sky-50/40"
                 >
                   <div className="mt-0.5 w-14 shrink-0 text-center">
                     <div className="text-[14px] font-extrabold text-sky-700">{fmtTime(ev.start)}</div>
@@ -595,23 +600,125 @@ function MonthCalendar({ appointments }: { appointments: Appointment[] }) {
                       {ev.customer_id && <span className="font-mono">{ev.customer_id}</span>}
                     </div>
                   </div>
-                  {ev.html_link && (
-                    <a
-                      href={ev.html_link}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="shrink-0 self-center rounded-full bg-sky-600 px-3 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-sky-700"
-                    >
-                      열기 →
-                    </a>
-                  )}
-                </div>
+                  <span className="shrink-0 self-center text-ink-faint">›</span>
+                </button>
               ))}
             </div>
           )}
         </div>
       )}
+
+      {openEvent && <EventPopup ev={openEvent} onClose={() => setOpenEvent(null)} />}
     </section>
+  );
+}
+
+function EventPopup({ ev, onClose }: { ev: Appointment; onClose: () => void }) {
+  function fmtRange(startIso: string, endIso: string) {
+    const s = new Date(startIso);
+    if (isNaN(s.getTime())) return startIso;
+    const datePart = `${s.getMonth() + 1}월 ${s.getDate()}일 (${WEEKDAYS[s.getDay()]})`;
+    const t = (d: Date) => {
+      const h = d.getHours();
+      const m = d.getMinutes();
+      const ap = h < 12 ? "오전" : "오후";
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      return `${ap} ${h12}:${String(m).padStart(2, "0")}`;
+    };
+    const e = endIso ? new Date(endIso) : null;
+    return e && !isNaN(e.getTime())
+      ? `${datePart} · ${t(s)} – ${t(e)}`
+      : `${datePart} · ${t(s)}`;
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/20 p-4 animate-fade-up"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-lifted"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* toolbar */}
+        <div className="flex items-center justify-end gap-1 px-3 pt-3">
+          {ev.html_link && (
+            <a
+              href={ev.html_link}
+              target="_blank"
+              rel="noreferrer noopener"
+              title="Google 캘린더에서 열기"
+              className="grid h-9 w-9 place-items-center rounded-full text-ink-muted transition-colors hover:bg-surface"
+            >
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+                <path d="M14 5h5v5M19 5l-9 9M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </a>
+          )}
+          <button
+            onClick={onClose}
+            title="닫기"
+            className="grid h-9 w-9 place-items-center rounded-full text-ink-muted transition-colors hover:bg-surface"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+              <path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="px-6 pb-6">
+          {/* title with color square */}
+          <div className="flex items-start gap-3">
+            <span className="mt-1.5 h-3.5 w-3.5 shrink-0 rounded-[4px] bg-sky-500" />
+            <h3 className="text-[20px] font-bold leading-snug text-ink">{ev.summary}</h3>
+          </div>
+
+          {/* date/time */}
+          <div className="mt-1 pl-[26px] text-[14px] text-ink-soft">
+            {fmtRange(ev.start, ev.end)}
+          </div>
+
+          <div className="mt-5 space-y-4">
+            {ev.location && (
+              <Row
+                icon={
+                  <path d="M12 21s-7-5.5-7-11a7 7 0 1 1 14 0c0 5.5-7 11-7 11Z M12 10a2 2 0 1 0 0 0Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+                }
+              >
+                <span className="text-[14px] text-ink">{ev.location}</span>
+              </Row>
+            )}
+            {ev.description && (
+              <Row
+                icon={<path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />}
+              >
+                <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink-soft">
+                  {ev.description}
+                </p>
+              </Row>
+            )}
+            {ev.customer_id && (
+              <Row
+                icon={<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />}
+              >
+                <span className="font-mono text-[13.5px] text-ink-soft">{ev.customer_id}</span>
+              </Row>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Row({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex items-start gap-3">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="mt-0.5 shrink-0 text-ink-faint">
+        {icon}
+      </svg>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
   );
 }
 
